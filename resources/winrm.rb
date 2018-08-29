@@ -17,6 +17,7 @@
 # limitations under the License.
 #
 resource_name :winrm
+default_action :create
 
 property :Hostname, String, default: node['fqdn']
 property :TrustedHosts, String, default: '*'
@@ -32,13 +33,17 @@ action :create do
   # If no certificate found and generateCert is true try to generate a self signed cert
   if new_resource.HTTPS && new_resource.Thumbprint.nil? && load_thumbprint.empty?
     Chef::Log.warn('Inside Create Cert')
-    cookbook_file "#{Chef::Config[:file_cache_path]}\\selfssl.exe" do
-      source 'selfssl.exe'
+    template 'c:/chef/newcert.inf' do
+      source 'newcert.inf.erb'
+      variables ({
+      :hostname =>  node['fqdn']
+      })
     end
 
     execute 'create-certificate' do
-      command "#{Chef::Config[:file_cache_path]}\\selfssl.exe /T /N:cn=#{new_resource.Hostname} /V:3650 /Q"
+      command "certreq.exe -new -q -f c:\\chef\\newcert.inf c:\\chef\\selfsigned.pem"
     end
+
   end
 
   thumbprint = new_resource.Thumbprint.nil? ? load_thumbprint : new_resource.Thumbprint
@@ -115,7 +120,7 @@ end
 
 action_class do
   def load_thumbprint
-    cert_cmd = "Get-childItem cert:\\LocalMachine\\Root\\ | Select-String -pattern #{new_resource.Hostname} | Select-Object -first 1 -ExpandProperty line | % { $_.SubString($_.IndexOf('[Thumbprint]')+ '[Thumbprint]'.Length).Trim()}"
+    cert_cmd = "Get-childItem cert:\\LocalMachine\\My\\ | Select-String -pattern #{new_resource.Hostname} | Select-Object -first 1 -ExpandProperty line | % { $_.SubString($_.IndexOf('[Thumbprint]')+ '[Thumbprint]'.Length).Trim()}"
     cert_out = powershell_out!(cert_cmd)
     cert_out.stdout.strip
   end
